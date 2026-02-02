@@ -1,0 +1,76 @@
+apiVersion: workspace.devfile.io/v1alpha2
+kind: DevWorkspaceTemplate
+metadata:
+  annotations:
+    controller.devfile.io/allow-import-from: '*'
+    web-terminal.redhat.com/unmanaged-state: "true"
+  name: web-terminal-tooling
+  namespace: openshift-operators
+  labels:
+    console.openshift.io/terminal: 'true'
+spec:
+  components:
+    - container:
+        cpuLimit: 500m
+        cpuRequest: 100m
+        image: 'nexus.clg.lab:5002/dev-spaces/workspace-base:ubi10'
+        memoryLimit: 2Gi
+        memoryRequest: 128Mi
+        mountSources: false
+        volumeMounts:
+        - name: workspace-tmp
+          path: /projects
+        env:
+        - name: HOME
+          value: "/projects/home"
+      name: web-terminal-tooling
+    - name: prep-workspace
+      container:
+        args:
+          - '-c'
+          - >-
+            mkdir -p /projects/bin && cp /usr/bin/oc /projects/bin/oc && cp /usr/bin/kubectl /projects/bin/kubectl && if [[ -f ${HOME}/.kube/config ]]; then rm ${HOME}/.kube/config; fi
+        command:
+          - /bin/bash
+        image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        mountSources: false
+        memoryRequest: 128Mi
+        memoryLimit: 256Mi
+        cpuRequest: 10m
+        cpuLimit: 200m
+        volumeMounts:
+        - name: workspace-tmp
+          path: /projects
+        env:
+        - name: HOME
+          value: "/projects/home"
+    - name: workspace-tmp
+      volume:
+        size: 5G
+        ephemeral: true
+    - name: cm-config-volume
+      openshift:
+        deployByDefault: true
+        inlined: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: my-configmap
+            labels:
+              controller.devfile.io/mount-to-devworkspace: 'true'
+              controller.devfile.io/watch-configmap: 'true'
+            annotations:
+              controller.devfile.io/mount-as: file
+              controller.devfile.io/mount-path: /config-map-data
+          data:
+            demo.txt: |
+              key1=value1
+              key2=value2
+  commands:
+  - apply:
+      component: prep-workspace
+      label: Pre Start Prep
+    id: prep-workspace
+  events:
+    preStart:
+      - prep-workspace
